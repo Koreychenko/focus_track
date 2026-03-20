@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FocusTrack</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+      --bg:        #0d0f12;
+      --surface:   #14171c;
+      --surface2:  #1c2028;
+      --border:    #252a34;
+      --accent:    #c8f060;
+      --accent2:   #60c8f0;
+      --accent3:   #f06090;
+      --accent4:   #f0c060;
+      --text:      #e8eaf0;
+      --muted:     #6a7080;
+      --radius:    12px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; }
+
+    /* ── HEADER ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 40px; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: var(--bg); z-index: 20;
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-word { font-family: 'Instrument Serif', serif; font-size: 26px; color: var(--accent); }
+    .logo-sub  { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    #status-pill {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 99px; padding: 5px 12px; font-size: 11px; transition: border-color .4s;
+    }
+    #status-pill.active    { border-color: var(--accent); }
+    #status-pill.idle      { border-color: var(--accent4); }
+    #status-pill.suspended { border-color: var(--accent3); }
+    #status-pill.error     { border-color: var(--accent3); }
+    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .4s; }
+    #status-pill.active    #status-dot { background: var(--accent);  box-shadow: 0 0 6px var(--accent);  animation: pulse 2s infinite; }
+    #status-pill.idle      #status-dot { background: var(--accent4); box-shadow: 0 0 6px var(--accent4); }
+    #status-pill.suspended #status-dot { background: var(--accent3); }
+    #status-pill.error     #status-dot { background: var(--accent3); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    #date-btn {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 14px; font-size: 12px;
+      color: var(--text); cursor: pointer; font-family: 'DM Mono', monospace;
+      transition: border-color .2s;
+    }
+    #date-btn:hover { border-color: var(--accent2); }
+    #date-btn.historical { border-color: var(--accent2); color: var(--accent2); }
+
+    #editor-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 14px; font-size: 11px;
+      color: var(--muted); cursor: pointer; font-family: 'DM Mono', monospace;
+      text-decoration: none; transition: border-color .2s, color .2s;
+      letter-spacing: 1px;
+    }
+    #editor-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── CALENDAR ── */
+    #cal-overlay { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }
+    #cal-overlay.open { display: flex; align-items: center; justify-content: center; }
+    #cal-popup { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 320px; box-shadow: 0 20px 60px rgba(0,0,0,.6); animation: popIn .15s ease; }
+    @keyframes popIn { from{opacity:0;transform:scale(.95)} to{opacity:1;transform:scale(1)} }
+    #cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    #cal-month-label { font-size: 13px; }
+    .cal-nav { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: border-color .15s, color .15s; }
+    .cal-nav:hover { border-color: var(--accent2); color: var(--accent2); }
+    #cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+    .cal-dow { text-align: center; font-size: 9px; color: var(--muted); letter-spacing: 1px; padding: 4px 0 8px; text-transform: uppercase; }
+    .cal-day { text-align: center; padding: 7px 4px; border-radius: 6px; font-size: 12px; cursor: default; color: var(--muted); }
+    .cal-day.has-data { color: var(--text); cursor: pointer; background: var(--surface2); }
+    .cal-day.has-data:hover { background: var(--border); }
+    .cal-day.selected { background: var(--accent2) !important; color: var(--bg) !important; }
+    .cal-day.today-marker { outline: 1px solid var(--accent); outline-offset: -2px; }
+    .cal-day.empty { visibility: hidden; }
+    #cal-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+    #cal-today-btn { background: none; border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: border-color .15s, color .15s; }
+    #cal-today-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #cal-close-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+    #cal-close-btn:hover { color: var(--text); }
+
+    /* Refresh ring */
+    #refresh-ring { position: relative; width: 28px; height: 28px; cursor: pointer; flex-shrink: 0; }
+    #refresh-ring svg { width: 28px; height: 28px; transform: rotate(-90deg); }
+    #refresh-ring circle.track { fill: none; stroke: var(--border); stroke-width: 2.5; }
+    #refresh-ring circle.prog  { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 75.4; stroke-dashoffset: 75.4; transition: stroke-dashoffset 1s linear; stroke-linecap: round; }
+    #refresh-ring .icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 12px; color: var(--muted); user-select: none; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 40px; background: var(--bg); position: sticky; top: 69px; z-index: 19; }
+    .tab { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); padding: 13px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .2s, border-color .2s; }
+    .tab:hover  { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── MAIN ── */
+    main { padding: 28px 40px; max-width: 1200px; margin: 0 auto; }
+
+    #history-banner { display: none; background: var(--surface2); border: 1px solid var(--accent2); border-radius: var(--radius); padding: 10px 18px; margin-bottom: 20px; font-size: 12px; color: var(--accent2); align-items: center; justify-content: space-between; }
+    #history-banner.show { display: flex; }
+
+    /* ── STATS ROW ── */
+    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; position: relative; overflow: hidden; }
+    .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+    .stat-card:nth-child(1)::before { background: var(--accent); }
+    .stat-card:nth-child(2)::before { background: var(--accent2); }
+    .stat-card:nth-child(3)::before { background: var(--accent3); }
+    .stat-card:nth-child(4)::before { background: var(--accent4); }
+    .stat-label { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+    .stat-value { font-family: 'Instrument Serif', serif; font-size: 34px; color: var(--text); line-height: 1; }
+    .stat-meta  { font-size: 11px; color: var(--muted); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #card-idle.zero .stat-value, #card-idle.zero .stat-label { color: var(--border); }
+
+    .section-title { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+    /* ── CATEGORY BADGE (shared) ── */
+    .cat-badge {
+      display: inline-block; font-size: 9px; padding: 1px 8px;
+      border-radius: 99px; font-family: 'DM Mono', monospace;
+      border: 1px solid; white-space: nowrap;
+    }
+
+    /* ── CATEGORIES TAB ── */
+    #cat-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; margin-bottom: 40px; }
+
+    /* Donut */
+    #donut-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 20px; text-align: center; }
+    #donut-svg  { width: 200px; height: 200px; overflow: visible; }
+    #donut-center { margin-top: 16px; }
+    #donut-center .big  { font-family: 'Instrument Serif', serif; font-size: 28px; }
+    #donut-center .sub  { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+    /* Category rows */
+    #cat-rows { display: flex; flex-direction: column; gap: 8px; }
+    .cat-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 20px;
+      display: grid; grid-template-columns: 1fr auto;
+      gap: 12px; align-items: center;
+      cursor: pointer; transition: border-color .15s;
+      animation: fadeSlide .3s ease both;
+    }
+    .cat-row:hover { border-color: var(--accent2); }
+    .cat-row-left { min-width: 0; }
+    .cat-row-name { font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .cat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .cat-bar-wrap { height: 5px; background: var(--surface2); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+    .cat-bar { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .cat-pct { font-size: 10px; color: var(--muted); }
+    .cat-time-col { text-align: right; white-space: nowrap; }
+    .cat-hms { font-family: 'Instrument Serif', serif; font-size: 22px; }
+    .cat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* Category drill-down (window list inside category) */
+    #cat-drill {
+      background: var(--surface); border: 1px solid var(--accent2);
+      border-radius: var(--radius); margin-top: 8px; overflow: hidden; display: none;
+    }
+    #cat-drill-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--accent2); }
+    #cat-drill-close { background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer; }
+    #cat-drill-close:hover { color:var(--text); }
+    .cat-drill-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:9px 20px; border-bottom:1px solid var(--border); font-size:12px; }
+    .cat-drill-row:last-child { border-bottom:none; }
+    .cat-drill-row:hover { background:var(--surface2); }
+    .cat-drill-title { color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cat-drill-app   { font-size:10px; color:var(--muted); margin-top:2px; }
+    .cat-drill-time  { text-align:right; white-space:nowrap; }
+    .cat-drill-hms   { font-family:'Instrument Serif',serif; font-size:15px; }
+    .cat-drill-pct   { font-size:10px; color:var(--muted); }
+
+    /* ── APP CARDS ── */
+    #apps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-bottom: 40px; }
+    .app-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; cursor: pointer; transition: border-color .15s, background .15s; animation: fadeSlide .3s ease both; }
+    .app-card:hover { border-color: var(--accent2); background: var(--surface2); }
+    .app-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .app-name { font-size: 14px; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .app-time { font-family: 'Instrument Serif', serif; font-size: 20px; white-space: nowrap; }
+    .app-meta { font-size: 10px; color: var(--muted); margin-top: 1px; text-align: right; }
+    .app-bar-wrap { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .app-bar { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .app-wins { margin-top: 10px; font-size: 10px; color: var(--muted); }
+
+    /* ── WINDOW ROWS ── */
+    .window-row { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; transition: border-color .15s; animation: fadeSlide .3s ease both; }
+    .window-row:hover { border-color: var(--accent); }
+    @keyframes fadeSlide { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    .win-info { min-width: 0; }
+    .win-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 3px; flex-wrap: wrap; }
+    .win-rank { font-size: 10px; color: var(--muted); }
+    .win-app-badge { font-size: 9px; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+    .win-title    { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .win-bar-wrap { margin-top: 7px; height: 8px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .win-bar      { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .win-time     { text-align: right; white-space: nowrap; }
+    .win-hms      { font-family: 'Instrument Serif', serif; font-size: 20px; }
+    .win-pct      { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── DRILL-DOWN (apps) ── */
+    #drill-panel { background: var(--surface); border: 1px solid var(--accent2); border-radius: var(--radius); margin-bottom: 28px; overflow: hidden; display: none; }
+    #drill-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    #drill-title { font-size: 13px; color: var(--accent2); }
+    #drill-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+    #drill-close:hover { color: var(--text); }
+    .drill-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .drill-row:last-child { border-bottom: none; }
+    .drill-row:hover { background: var(--surface2); }
+    .drill-title { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .drill-right { text-align: right; white-space: nowrap; }
+    .drill-time  { font-family: 'Instrument Serif', serif; font-size: 16px; }
+    .drill-pct   { font-size: 10px; color: var(--muted); }
+
+    /* ── TIMELINE ── */
+    #timeline-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 40px; }
+    .tl-row { display: grid; grid-template-columns: 80px 110px 130px 60px 1fr; align-items: center; gap: 10px; padding: 9px 18px; border-bottom: 1px solid var(--border); font-size: 11px; transition: background .1s; }
+    .tl-row:last-child { border-bottom: none; }
+    .tl-row:hover { background: var(--surface2); }
+    .tl-row.tl-idle { opacity: .55; }
+    .tl-row.tl-idle .tl-app { color: var(--accent4); }
+    .tl-time  { color: var(--muted); font-size: 10px; }
+    .tl-app   { color: var(--accent2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tl-title { color: var(--text);    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tl-dur   { color: var(--muted); text-align: right; white-space: nowrap; }
+    .tl-bar-wrap { height: 5px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .tl-bar      { height: 100%; border-radius: 99px; }
+
+    /* ── CONNECTING ── */
+    #connecting { text-align: center; padding: 80px 20px; color: var(--muted); }
+    #connecting .big { font-family: 'Instrument Serif', serif; font-size: 48px; color: var(--border); margin-bottom: 16px; animation: breathe 2s ease-in-out infinite; }
+    @keyframes breathe { 0%,100%{opacity:.3} 50%{opacity:1} }
+    #connecting code { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; font-size: 13px; color: var(--accent); }
+
+    #idle-banner { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--accent4); border-radius: 10px; padding: 11px 22px; font-size: 12px; color: var(--accent4); z-index: 100; box-shadow: 0 4px 24px rgba(0,0,0,.5); display: none; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-word">FocusTrack</span>
+    <span class="logo-sub">Window Activity</span>
+  </div>
+  <div class="header-right">
+    <div id="status-pill"><span id="status-dot"></span><span id="status-label">Connecting…</span></div>
+    <button id="date-btn" onclick="openCalendar()">
+      <span id="date-btn-label">Today</span><span>▾</span>
+    </button>
+    <a id="editor-btn" href="/editor" target="_blank">⚙ Rules</a>
+    <div id="refresh-ring" title="Refresh now" onclick="fetchData()">
+      <svg viewBox="0 0 28 28"><circle class="track" cx="14" cy="14" r="12"/><circle class="prog" cx="14" cy="14" r="12" id="ring-prog"/></svg>
+      <span class="icon">↻</span>
+    </div>
+  </div>
+</header>
+
+<!-- Calendar -->
+<div id="cal-overlay" onclick="handleOverlayClick(event)">
+  <div id="cal-popup">
+    <div id="cal-header">
+      <button class="cal-nav" onclick="calShiftMonth(-1)">‹</button>
+      <span id="cal-month-label">—</span>
+      <button class="cal-nav" onclick="calShiftMonth(+1)">›</button>
+    </div>
+    <div id="cal-grid"></div>
+    <div id="cal-footer">
+      <button id="cal-today-btn" onclick="selectToday()">Jump to Today</button>
+      <button id="cal-close-btn" onclick="closeCalendar()">✕</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabs" id="tabs" style="display:none">
+  <div class="tab active" data-tab="categories" onclick="switchTab('categories')">Categories</div>
+  <div class="tab"        data-tab="apps"        onclick="switchTab('apps')">Applications</div>
+  <div class="tab"        data-tab="windows"     onclick="switchTab('windows')">Windows</div>
+  <div class="tab"        data-tab="timeline"    onclick="switchTab('timeline')">Timeline</div>
+</div>
+
+<main>
+  <div id="connecting">
+    <div class="big">◎</div>
+    <p style="font-size:14px;margin-bottom:12px">Waiting for tracker…</p>
+    <p style="font-size:12px">Trying <code>http://localhost:7070/data</code></p>
+    <p style="margin-top:24px;font-size:12px;line-height:2;color:var(--border)">Start: <code>python3 tracker.py</code></p>
+  </div>
+
+  <div id="dashboard" style="display:none">
+    <div id="history-banner">
+      <span id="history-banner-text">Viewing historical data</span>
+      <button onclick="selectToday()" style="background:none;border:1px solid var(--accent2);color:var(--accent2);font-family:'DM Mono',monospace;font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">Back to Today</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Time</div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-meta"  id="stat-date"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label" id="stat-top-label">Top Category</div>
+        <div class="stat-value" id="stat-top-time">—</div>
+        <div class="stat-meta"  id="stat-top-name"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label" id="stat-count-label">Categories Active</div>
+        <div class="stat-value" id="stat-count">—</div>
+        <div class="stat-meta"  id="stat-count-meta">with tracked time</div>
+      </div>
+      <div class="stat-card" id="card-idle">
+        <div class="stat-label">Idle Time</div>
+        <div class="stat-value" id="stat-idle">—</div>
+        <div class="stat-meta"  id="stat-idle-meta">keyboard &amp; mouse</div>
+      </div>
+    </div>
+
+    <!-- CATEGORIES TAB -->
+    <div id="tab-categories">
+      <div class="section-title">Time By Category</div>
+      <div id="cat-layout">
+        <div id="donut-wrap">
+          <svg id="donut-svg" viewBox="-110 -110 220 220">
+            <circle cx="0" cy="0" r="80" fill="none" stroke="#1c2028" stroke-width="28"/>
+            <g id="donut-arcs"></g>
+          </svg>
+          <div id="donut-center">
+            <div class="big" id="donut-big">—</div>
+            <div class="sub" id="donut-sub">total active</div>
+          </div>
+        </div>
+        <div>
+          <div id="cat-rows"></div>
+          <div id="cat-drill">
+            <div id="cat-drill-header">
+              <span id="cat-drill-title">—</span>
+              <button id="cat-drill-close" onclick="closeCatDrill()">✕</button>
+            </div>
+            <div id="cat-drill-rows"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPS TAB -->
+    <div id="tab-apps" style="display:none">
+      <div class="section-title">Time Per Application</div>
+      <div id="drill-panel">
+        <div id="drill-header"><span id="drill-title">—</span><button id="drill-close" onclick="closeDrill()">✕</button></div>
+        <div id="drill-rows"></div>
+      </div>
+      <div id="apps-grid"></div>
+    </div>
+
+    <!-- WINDOWS TAB -->
+    <div id="tab-windows" style="display:none">
+      <div class="section-title">Time Per Window — Top 30</div>
+      <div id="rows-container"></div>
+    </div>
+
+    <!-- TIMELINE TAB -->
+    <div id="tab-timeline" style="display:none">
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Recent Activity — Last 50 Events ≥ 10s</span>
+        <span style="font-size:10px;color:var(--border)">log scale</span>
+      </div>
+      <div id="timeline-wrap"></div>
+    </div>
+  </div>
+</main>
+
+<div id="idle-banner">⏸ Tracking paused — idle for <span id="idle-dur">—</span></div>
+
+<script>
+  // ── Constants ───────────────────────────────────────────────────────────────
+  const REFRESH_INTERVAL = 10;
+  const CIRCUMFERENCE    = 2 * Math.PI * 12;
+  const TL_MIN_SECONDS   = 10;
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const FALLBACK_COLOURS = ['#c8f060','#60c8f0','#f06090','#f0c060','#90f060','#c060f0','#60f0c8','#f09060','#6090f0','#f060c8','#a0f090','#f0a060','#6060f0','#f060a0','#60f060'];
+
+  // ── State ───────────────────────────────────────────────────────────────────
+  let gData        = null;
+  let gCategories  = [];
+  let currentTab   = 'categories';
+  let countdown    = REFRESH_INTERVAL;
+  let drillApp     = null;
+  let drillCat     = null;
+  let viewingDate  = null;
+  let availDates   = new Set();
+  let calYear      = new Date().getFullYear();
+  let calMonth     = new Date().getMonth();
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function colourFor(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return FALLBACK_COLOURS[h % FALLBACK_COLOURS.length];
+  }
+
+  function fmt(seconds) {
+    seconds = Math.floor(Math.abs(seconds));
+    const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function todayStr() { return new Date().toISOString().slice(0,10); }
+
+  function logBarW(seconds, maxSeconds) {
+    if (maxSeconds <= 0 || seconds <= 0) return 0;
+    return (Math.log1p(seconds) / Math.log1p(maxSeconds) * 100).toFixed(1);
+  }
+
+  // ── Category classification ──────────────────────────────────────────────────
+  // Applied client-side at render time — raw data is never modified.
+  // Rules: each category has [{app: regexp_str, title: regexp_str}, ...]
+  // Both fields are case-insensitive. Within a rule, if both specified both must match.
+  // First category whose any rule matches wins. Last category (empty rules) = catch-all.
+
+  function classifyEvent(ev, categories) {
+    if (!categories || !categories.length) return { name: 'Uncategorised', color: '#6a7080' };
+    for (const cat of categories) {
+      if (!cat.rules || cat.rules.length === 0) continue; // skip catch-all for now
+      for (const rule of cat.rules) {
+        const appPat   = rule.app   ? rule.app.trim()   : '';
+        const titlePat = rule.title ? rule.title.trim() : '';
+        if (!appPat && !titlePat) continue;
+        try {
+          const appMatch   = !appPat   || new RegExp(appPat,   'i').test(ev.app   || '');
+          const titleMatch = !titlePat || new RegExp(titlePat, 'i').test(ev.title || '');
+          if (appMatch && titleMatch) return { name: cat.name, color: cat.color };
+        } catch (e) { /* invalid regexp — skip rule */ }
+      }
+    }
+    // Fall through to catch-all (last category with no rules), or generic fallback
+    const catchAll = categories.find(c => !c.rules || c.rules.length === 0);
+    return catchAll ? { name: catchAll.name, color: catchAll.color } : { name: 'Uncategorised', color: '#6a7080' };
+  }
+
+  function buildCategoryTotals(data, categories) {
+    // Returns: { catName: { color, seconds, windows: [{title, app, seconds}] } }
+    const totals = {};
+    for (const cat of categories) {
+      totals[cat.name] = { color: cat.color, seconds: 0, windows: [] };
+    }
+    // Use timeline events (active only) for classification
+    for (const ev of (data.timeline || [])) {
+      if (ev.event !== 'active') continue;
+      const cat = classifyEvent(ev, categories);
+      if (!totals[cat.name]) totals[cat.name] = { color: cat.color, seconds: 0, windows: [] };
+      totals[cat.name].seconds += ev.seconds;
+      // Merge into windows list
+      const existing = totals[cat.name].windows.find(w => w.title === ev.title && w.app === ev.app);
+      if (existing) existing.seconds += ev.seconds;
+      else totals[cat.name].windows.push({ title: ev.title, app: ev.app, seconds: ev.seconds });
+    }
+    // Sort windows within each category
+    for (const cat of Object.values(totals)) {
+      cat.windows.sort((a, b) => b.seconds - a.seconds);
+    }
+    return totals;
+  }
+
+  // ── Fetch ───────────────────────────────────────────────────────────────────
+  async function fetchData() {
+    countdown = REFRESH_INTERVAL;
+    const url = viewingDate ? `/data?date=${viewingDate}` : `/data`;
+    try {
+      const [dataRes, catRes] = await Promise.all([
+        fetch(url, { cache: 'no-store' }),
+        fetch('/categories', { cache: 'no-store' })
+      ]);
+      if (!dataRes.ok) throw new Error(`HTTP ${dataRes.status}`);
+      gData       = await dataRes.json();
+      gCategories = catRes.ok ? await catRes.json() : [];
+      render(gData, gCategories);
+    } catch (e) {
+      setStatus('error', '✕ Offline');
+    }
+  }
+
+  async function fetchHistory() {
+    try {
+      const res = await fetch('/history', { cache: 'no-store' });
+      availDates = new Set(await res.json());
+    } catch (e) {}
+  }
+
+  // Countdown ring
+  setInterval(() => {
+    if (viewingDate) return;
+    countdown--;
+    const prog   = document.getElementById('ring-prog');
+    const offset = CIRCUMFERENCE * (1 - (REFRESH_INTERVAL - countdown) / REFRESH_INTERVAL);
+    prog.style.strokeDashoffset = Math.max(0, offset);
+    if (countdown <= 0) fetchData();
+  }, 1000);
+
+  fetchHistory();
+  fetchData();
+
+  // ── Status ───────────────────────────────────────────────────────────────────
+  function setStatus(status, label) {
+    document.getElementById('status-pill').className = status;
+    document.getElementById('status-label').textContent = label;
+  }
+
+  // ── Calendar ─────────────────────────────────────────────────────────────────
+  function openCalendar() {
+    calYear = new Date().getFullYear(); calMonth = new Date().getMonth();
+    fetchHistory().then(renderCalendar);
+    document.getElementById('cal-overlay').classList.add('open');
+  }
+  function closeCalendar() { document.getElementById('cal-overlay').classList.remove('open'); }
+  function handleOverlayClick(e) { if (e.target.id === 'cal-overlay') closeCalendar(); }
+  function calShiftMonth(d) {
+    calMonth += d;
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderCalendar();
+  }
+  function renderCalendar() {
+    document.getElementById('cal-month-label').textContent = `${MONTHS[calMonth]} ${calYear}`;
+    const grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+    ['Mo','Tu','We','Th','Fr','Sa','Su'].forEach(d => {
+      const el = document.createElement('div'); el.className = 'cal-dow'; el.textContent = d; grid.appendChild(el);
+    });
+    const today = todayStr();
+    const first = new Date(calYear, calMonth, 1);
+    const offset = (first.getDay() + 6) % 7;
+    const days   = new Date(calYear, calMonth + 1, 0).getDate();
+    for (let i = 0; i < offset; i++) { const el = document.createElement('div'); el.className='cal-day empty'; grid.appendChild(el); }
+    for (let d = 1; d <= days; d++) {
+      const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const el = document.createElement('div'); el.className = 'cal-day'; el.textContent = d;
+      if (availDates.has(ds) || ds === today) { el.classList.add('has-data'); el.onclick = () => { selectDate(ds); closeCalendar(); }; }
+      if (ds === today) el.classList.add('today-marker');
+      if (ds === (viewingDate || today)) el.classList.add('selected');
+      grid.appendChild(el);
+    }
+  }
+  function selectDate(ds) {
+    const today = todayStr();
+    viewingDate = ds === today ? null : ds;
+    const btn = document.getElementById('date-btn');
+    if (viewingDate) {
+      document.getElementById('date-btn-label').textContent = viewingDate;
+      btn.classList.add('historical');
+      document.getElementById('refresh-ring').style.opacity = '0.3';
+      document.getElementById('refresh-ring').style.pointerEvents = 'none';
+    } else {
+      document.getElementById('date-btn-label').textContent = 'Today';
+      btn.classList.remove('historical');
+      document.getElementById('refresh-ring').style.opacity = '';
+      document.getElementById('refresh-ring').style.pointerEvents = '';
+    }
+    fetchData();
+  }
+  function selectToday() { closeCalendar(); selectDate(todayStr()); }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  function render(data, categories) {
+    document.getElementById('connecting').style.display = 'none';
+    document.getElementById('dashboard').style.display  = '';
+    document.getElementById('tabs').style.display       = '';
+
+    const isHistorical = !!viewingDate;
+    document.getElementById('history-banner').classList.toggle('show', isHistorical);
+    if (isHistorical) {
+      document.getElementById('history-banner-text').textContent = `Viewing: ${data.date}`;
+      setStatus('', '📁 Historical');
+      document.getElementById('idle-banner').style.display = 'none';
+    } else {
+      const status = data.status || 'active';
+      let label = { active:'● Active', idle:'⏸ Idle', suspended:'⏻ Resumed', error:'✕ Offline' }[status] || status;
+      if (status === 'idle' && data.idle_seconds > 0) label = `⏸ Idle ${fmt(data.idle_seconds)}`;
+      setStatus(status, label);
+      const idleBanner = document.getElementById('idle-banner');
+      if (status === 'idle' && data.idle_seconds > 0) {
+        document.getElementById('idle-dur').textContent = fmt(data.idle_seconds);
+        idleBanner.style.display = '';
+      } else { idleBanner.style.display = 'none'; }
+    }
+
+    const winEntries = Object.entries(data.windows || {}).sort((a,b)=>b[1]-a[1]);
+    const totalSec   = winEntries.reduce((s,[,v])=>s+v, 0);
+    const idleSec    = data.idle_total || 0;
+
+    document.getElementById('stat-total').textContent = fmt(totalSec);
+    document.getElementById('stat-date').textContent  = new Date(data.date + 'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+    document.getElementById('stat-idle').textContent  = idleSec > 0 ? fmt(idleSec) : '0s';
+    document.getElementById('card-idle').className    = `stat-card${idleSec > 0 ? '' : ' zero'}`;
+    document.getElementById('stat-idle-meta').textContent = data.idle_threshold ? `threshold: ${fmt(data.idle_threshold)}` : 'keyboard & mouse';
+
+    const catTotals = buildCategoryTotals(data, categories);
+    renderCategories(catTotals, totalSec);
+    renderApps(data, totalSec, catTotals, categories);
+    renderWindows(data, winEntries, totalSec, categories);
+    renderTimeline(data, categories);
+    updateStats(data, winEntries, catTotals);
+
+    if (drillApp && data.app_windows?.[drillApp]) openDrill(drillApp, data);
+    if (drillCat && catTotals[drillCat]) openCatDrill(drillCat, catTotals);
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  function updateStats(data, winEntries, catTotals) {
+    if (currentTab === 'windows') {
+      document.getElementById('stat-top-label').textContent   = 'Top Window';
+      document.getElementById('stat-count-label').textContent = 'Windows Visited';
+      document.getElementById('stat-count-meta').textContent  = 'unique window titles';
+      document.getElementById('stat-top-time').textContent    = winEntries[0] ? fmt(winEntries[0][1]) : '—';
+      document.getElementById('stat-top-name').textContent    = winEntries[0]?.[0] || '—';
+      document.getElementById('stat-count').textContent       = winEntries.length;
+    } else if (currentTab === 'apps') {
+      const appEntries = Object.entries(data.apps || {}).sort((a,b)=>b[1]-a[1]);
+      document.getElementById('stat-top-label').textContent   = 'Top App';
+      document.getElementById('stat-count-label').textContent = 'Apps Used';
+      document.getElementById('stat-count-meta').textContent  = 'unique applications';
+      document.getElementById('stat-top-time').textContent    = appEntries[0] ? fmt(appEntries[0][1]) : '—';
+      document.getElementById('stat-top-name').textContent    = appEntries[0]?.[0] || '—';
+      document.getElementById('stat-count').textContent       = appEntries.length;
+    } else {
+      const sorted = Object.entries(catTotals).sort((a,b)=>b[1].seconds-a[1].seconds).filter(([,v])=>v.seconds>0);
+      document.getElementById('stat-top-label').textContent   = 'Top Category';
+      document.getElementById('stat-count-label').textContent = 'Categories Active';
+      document.getElementById('stat-count-meta').textContent  = 'with tracked time';
+      document.getElementById('stat-top-time').textContent    = sorted[0] ? fmt(sorted[0][1].seconds) : '—';
+      document.getElementById('stat-top-name').textContent    = sorted[0]?.[0] || '—';
+      document.getElementById('stat-count').textContent       = sorted.length;
+    }
+  }
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    ['categories','apps','windows','timeline'].forEach(id =>
+      document.getElementById(`tab-${id}`).style.display = id === tab ? '' : 'none'
+    );
+    if (gData) updateStats(gData, Object.entries(gData.windows||{}).sort((a,b)=>b[1]-a[1]), buildCategoryTotals(gData, gCategories));
+  }
+
+  // ── Donut chart ───────────────────────────────────────────────────────────
+  function renderDonut(catTotals, totalSec) {
+    const arcs = document.getElementById('donut-arcs');
+    arcs.innerHTML = '';
+    const R = 80, SW = 28;
+    const circ = 2 * Math.PI * R;
+    const sorted = Object.entries(catTotals).sort((a,b)=>b[1].seconds-a[1].seconds).filter(([,v])=>v.seconds>0);
+    if (!sorted.length) return;
+
+    let offset = 0;
+    const gap = 2; // degrees gap between segments
+    for (const [name, cat] of sorted) {
+      const frac    = cat.seconds / totalSec;
+      const dashLen = Math.max(0, frac * circ - (gap / 360 * circ));
+      const circle  = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx', 0); circle.setAttribute('cy', 0); circle.setAttribute('r', R);
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', cat.color);
+      circle.setAttribute('stroke-width', SW);
+      circle.setAttribute('stroke-dasharray', `${dashLen} ${circ - dashLen}`);
+      circle.setAttribute('stroke-dashoffset', -offset * circ);
+      circle.setAttribute('transform', 'rotate(-90)');
+      circle.style.transition = 'stroke-dasharray .6s cubic-bezier(.4,0,.2,1)';
+      circle.style.cursor = 'pointer';
+      circle.title = name;
+      circle.addEventListener('mouseenter', () => highlightCat(name, cat));
+      circle.addEventListener('mouseleave', resetDonutCenter);
+      circle.addEventListener('click', () => openCatDrill(name, catTotals));
+      arcs.appendChild(circle);
+      offset += frac;
+    }
+    resetDonutCenter();
+
+    function resetDonutCenter() {
+      document.getElementById('donut-big').textContent = fmt(totalSec);
+      document.getElementById('donut-sub').textContent = 'total active';
+    }
+    function highlightCat(name, cat) {
+      document.getElementById('donut-big').textContent = fmt(cat.seconds);
+      document.getElementById('donut-sub').textContent = name;
+      document.getElementById('donut-big').style.color = cat.color;
+    }
+    window._resetDonutCenter = resetDonutCenter;
+  }
+
+  // ── Categories tab ────────────────────────────────────────────────────────
+  function renderCategories(catTotals, totalSec) {
+    renderDonut(catTotals, totalSec);
+
+    const rows  = document.getElementById('cat-rows');
+    rows.innerHTML = '';
+    const sorted = Object.entries(catTotals).sort((a,b)=>b[1].seconds-a[1].seconds);
+
+    sorted.forEach(([name, cat], i) => {
+      const pct  = totalSec > 0 ? ((cat.seconds / totalSec) * 100).toFixed(1) : '0.0';
+      const barW = totalSec > 0 ? ((cat.seconds / totalSec) * 100).toFixed(1) : '0';
+      const row  = document.createElement('div');
+      row.className = 'cat-row';
+      row.style.animationDelay = `${i*30}ms`;
+      row.onclick = () => openCatDrill(name, catTotals);
+      row.innerHTML = `
+        <div class="cat-row-left">
+          <div class="cat-row-name">
+            <span class="cat-dot" style="background:${cat.color}"></span>
+            ${esc(name)}
+          </div>
+          <div class="cat-pct">${cat.windows.length} window${cat.windows.length!==1?'s':''} · ${pct}%</div>
+          <div class="cat-bar-wrap">
+            <div class="cat-bar" style="width:${barW}%;background:${cat.color}"></div>
+          </div>
+        </div>
+        <div class="cat-time-col">
+          <div class="cat-hms" style="color:${cat.color}">${fmt(cat.seconds)}</div>
+        </div>
+      `;
+      rows.appendChild(row);
+    });
+  }
+
+  function openCatDrill(name, catTotals) {
+    drillCat = name;
+    const cat   = catTotals[name];
+    const drill = document.getElementById('cat-drill');
+    document.getElementById('cat-drill-title').textContent = `${name} — window breakdown`;
+    const rows = document.getElementById('cat-drill-rows');
+    rows.innerHTML = '';
+    cat.windows.slice(0, 30).forEach(w => {
+      const pct  = cat.seconds > 0 ? ((w.seconds / cat.seconds) * 100).toFixed(1) : '0.0';
+      const barW = cat.windows[0] ? ((w.seconds / cat.windows[0].seconds) * 100).toFixed(1) : '0';
+      const row  = document.createElement('div');
+      row.className = 'cat-drill-row';
+      row.innerHTML = `
+        <div>
+          <div class="cat-drill-title" title="${esc(w.title)}">${esc(w.title)}</div>
+          <div class="cat-drill-app">${esc(w.app)}</div>
+          <div style="margin-top:5px;height:3px;background:var(--surface2);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${barW}%;background:${cat.color};border-radius:99px"></div>
+          </div>
+        </div>
+        <div class="cat-drill-time">
+          <div class="cat-drill-hms">${fmt(w.seconds)}</div>
+          <div class="cat-drill-pct">${pct}%</div>
+        </div>
+      `;
+      rows.appendChild(row);
+    });
+    drill.style.display = '';
+    drill.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeCatDrill() {
+    drillCat = null;
+    document.getElementById('cat-drill').style.display = 'none';
+  }
+
+  // ── Apps ─────────────────────────────────────────────────────────────────────
+  function renderApps(data, totalSec, catTotals, categories) {
+    const appEntries = Object.entries(data.apps || {}).sort((a,b)=>b[1]-a[1]);
+    const maxSec     = appEntries[0]?.[1] || 1;
+    const grid       = document.getElementById('apps-grid');
+    grid.innerHTML   = '';
+    appEntries.forEach(([app, secs], i) => {
+      const pct    = ((secs / totalSec) * 100).toFixed(1);
+      const barW   = ((secs / maxSec)   * 100).toFixed(1);
+      const colour = colourFor(app);
+      const wins   = Object.entries(data.app_windows?.[app] || {}).sort((a,b)=>b[1]-a[1]);
+      const preview = wins.slice(0,2).map(([t])=>t.length>36?t.slice(0,33)+'…':t).join(', ');
+      // Dominant category for this app
+      const appCat = dominantCatForApp(app, data, categories);
+
+      const card = document.createElement('div');
+      card.className = 'app-card';
+      card.style.animationDelay = `${i*25}ms`;
+      card.onclick = () => openDrill(app, data);
+      card.innerHTML = `
+        <div class="app-header">
+          <div class="app-name">
+            ${esc(app)}
+            <span class="cat-badge" style="color:${appCat.color};border-color:${appCat.color}20">${esc(appCat.name)}</span>
+          </div>
+          <div>
+            <div class="app-time" style="color:${colour}">${fmt(secs)}</div>
+            <div class="app-meta">${pct}% of active</div>
+          </div>
+        </div>
+        <div class="app-bar-wrap"><div class="app-bar" style="width:${barW}%;background:${colour}"></div></div>
+        ${preview ? `<div class="app-wins">${esc(preview)}</div>` : ''}
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  function dominantCatForApp(app, data, categories) {
+    // Find the most-matched category for this app across timeline events
+    const tally = {};
+    for (const ev of (data.timeline || [])) {
+      if (ev.event !== 'active' || ev.app !== app) continue;
+      const cat = classifyEvent(ev, categories);
+      tally[cat.name] = (tally[cat.name] || { color: cat.color, seconds: 0 });
+      tally[cat.name].seconds += ev.seconds;
+    }
+    const sorted = Object.entries(tally).sort((a,b)=>b[1].seconds-a[1].seconds);
+    return sorted[0] ? { name: sorted[0][0], color: sorted[0][1].color } : { name: 'Uncategorised', color: '#6a7080' };
+  }
+
+  function openDrill(app, data) {
+    drillApp = app;
+    const wins   = Object.entries(data.app_windows?.[app] || {}).sort((a,b)=>b[1]-a[1]);
+    const appSec = data.apps?.[app] || 1;
+    const colour = colourFor(app);
+    document.getElementById('drill-title').textContent = `${app} — window breakdown`;
+    const rows = document.getElementById('drill-rows');
+    rows.innerHTML = '';
+    wins.forEach(([title, secs]) => {
+      const pct = ((secs / appSec) * 100).toFixed(1);
+      const barW = ((secs / (wins[0][1]||1)) * 100).toFixed(1);
+      const row = document.createElement('div');
+      row.className = 'drill-row';
+      row.innerHTML = `
+        <div>
+          <div class="drill-title" title="${esc(title)}">${esc(title)}</div>
+          <div style="margin-top:5px;height:4px;background:var(--surface2);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${barW}%;background:${colour};border-radius:99px"></div>
+          </div>
+        </div>
+        <div class="drill-right">
+          <div class="drill-time">${fmt(secs)}</div>
+          <div class="drill-pct">${pct}%</div>
+        </div>`;
+      rows.appendChild(row);
+    });
+    const panel = document.getElementById('drill-panel');
+    panel.style.display = '';
+    panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  function closeDrill() { drillApp = null; document.getElementById('drill-panel').style.display = 'none'; }
+
+  // ── Windows ───────────────────────────────────────────────────────────────
+  function renderWindows(data, entries, totalSec, categories) {
+    const top    = entries.slice(0,30);
+    const maxSec = top[0]?.[1] || 1;
+    const cont   = document.getElementById('rows-container');
+    cont.innerHTML = '';
+    const titleToApp = {};
+    (data.timeline || []).forEach(e => { if (e.app) titleToApp[e.title] = e.app; });
+    top.forEach(([title, secs], i) => {
+      const pct      = ((secs / totalSec) * 100).toFixed(1);
+      const barW     = ((secs / maxSec)   * 100).toFixed(1);
+      const appLabel = titleToApp[title] || '';
+      const colour   = colourFor(appLabel || title);
+      // Category for this window
+      const cat = classifyEvent({ title, app: appLabel }, categories);
+      const row = document.createElement('div');
+      row.className = 'window-row';
+      row.style.animationDelay = `${i*20}ms`;
+      row.innerHTML = `
+        <div class="win-info">
+          <div class="win-meta">
+            <span class="win-rank">#${i+1}</span>
+            ${appLabel ? `<span class="win-app-badge">${esc(appLabel)}</span>` : ''}
+            <span class="cat-badge" style="color:${cat.color};border-color:${cat.color}30">${esc(cat.name)}</span>
+          </div>
+          <div class="win-title" title="${esc(title)}">${esc(title)}</div>
+          <div class="win-bar-wrap"><div class="win-bar" style="width:${barW}%;background:${colour}"></div></div>
+        </div>
+        <div class="win-time">
+          <div class="win-hms">${fmt(secs)}</div>
+          <div class="win-pct">${pct}%</div>
+        </div>`;
+      cont.appendChild(row);
+    });
+  }
+
+  // ── Timeline ──────────────────────────────────────────────────────────────
+  function renderTimeline(data, categories) {
+    const wrap = document.getElementById('timeline-wrap');
+    wrap.innerHTML = '';
+    const events = (data.timeline || []).filter(e => e.seconds >= TL_MIN_SECONDS).slice(-50).reverse();
+    if (!events.length) {
+      wrap.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:12px">No events longer than 10s yet</div>';
+      return;
+    }
+    const maxSec = Math.max(...events.map(e=>e.seconds), 1);
+    events.forEach(ev => {
+      const isIdle = ev.event === 'idle';
+      const cat    = isIdle ? null : classifyEvent(ev, categories);
+      const colour = isIdle ? 'var(--accent4)' : (cat ? cat.color : colourFor(ev.app || ev.title));
+      const start  = new Date(ev.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+      const barW   = logBarW(ev.seconds, maxSec);
+      const row    = document.createElement('div');
+      row.className = `tl-row${isIdle?' tl-idle':''}`;
+      row.title = new Date(ev.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      row.innerHTML = `
+        <div class="tl-time">${start}</div>
+        <div class="tl-app" title="${esc(isIdle?'idle':(ev.app||''))}">${esc(isIdle?'— idle —':(ev.app||'—'))}</div>
+        <div class="tl-title" title="${esc(ev.title)}">${esc(isIdle?'no input':ev.title)}</div>
+        <div class="tl-dur">${fmt(ev.seconds)}${cat && !isIdle ? ` <span class="cat-badge" style="color:${cat.color};border-color:${cat.color}30;margin-left:4px">${esc(cat.name)}</span>` : ''}</div>
+        <div class="tl-bar-wrap"><div class="tl-bar" style="width:${barW}%;background:${colour}"></div></div>
+      `;
+      wrap.appendChild(row);
+    });
+  }
+</script>
+</body>
+</html>

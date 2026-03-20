@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FocusTrack — Rule Editor</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&display=swap');
+    :root {
+      --bg: #0d0f12; --surface: #14171c; --surface2: #1c2028;
+      --border: #252a34; --accent: #c8f060; --accent2: #60c8f0;
+      --accent3: #f06090; --accent4: #f0c060; --text: #e8eaf0; --muted: #6a7080;
+      --radius: 10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 40px; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: var(--bg); z-index: 10;
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-word { font-family: 'Instrument Serif', serif; font-size: 24px; color: var(--accent); }
+    .logo-sub  { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+
+    .btn {
+      font-family: 'DM Mono', monospace; font-size: 12px; padding: 7px 16px;
+      border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+      transition: border-color .2s, background .2s, color .2s;
+    }
+    .btn-ghost { background: var(--surface2); color: var(--muted); }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--surface); }
+    .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
+    .btn-primary:hover { background: #b0e040; border-color: #b0e040; }
+    .btn-danger { background: none; color: var(--accent3); border-color: var(--accent3); }
+    .btn-danger:hover { background: var(--accent3); color: var(--bg); }
+    .btn-small { padding: 4px 10px; font-size: 11px; }
+
+    #save-status { font-size: 11px; color: var(--muted); }
+    #save-status.ok  { color: var(--accent); }
+    #save-status.err { color: var(--accent3); }
+
+    main { padding: 28px 40px; max-width: 900px; margin: 0 auto; }
+
+    /* Live test bar */
+    #live-bar {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 20px; margin-bottom: 24px;
+      display: grid; grid-template-columns: 1fr 1fr auto;
+      gap: 12px; align-items: center;
+    }
+    .live-field { min-width: 0; }
+    .live-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px; }
+    .live-val   { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #live-cat-badge {
+      font-size: 12px; padding: 5px 14px; border-radius: 99px;
+      border: 1px solid var(--border); white-space: nowrap; transition: color .2s, border-color .2s;
+    }
+
+    /* Category cards */
+    #cat-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+
+    .cat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+
+    .cat-card-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 18px; cursor: pointer; user-select: none;
+      transition: background .15s;
+    }
+    .cat-card-header:hover { background: var(--surface2); }
+
+    .cat-color-swatch {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      cursor: pointer; border: 2px solid transparent;
+      transition: border-color .15s;
+    }
+    .cat-color-swatch:hover { border-color: var(--text); }
+
+    .cat-name-input {
+      flex: 1; background: none; border: none; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
+      cursor: text;
+    }
+    .cat-name-input::placeholder { color: var(--muted); }
+
+    .cat-collapse-icon { color: var(--muted); font-size: 12px; transition: transform .2s; }
+    .cat-card.open .cat-collapse-icon { transform: rotate(180deg); }
+
+    .cat-card-body { display: none; border-top: 1px solid var(--border); padding: 16px 18px; }
+    .cat-card.open .cat-card-body { display: block; }
+
+    /* Rules */
+    .rules-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+
+    .rule-row {
+      display: grid; grid-template-columns: 1fr 1fr auto;
+      gap: 8px; align-items: center;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .rule-row:hover { border-color: var(--border); }
+
+    .rule-field { display: flex; flex-direction: column; gap: 3px; }
+    .rule-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .rule-input {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 12px; padding: 5px 9px;
+      border-radius: 6px; outline: none; transition: border-color .15s;
+    }
+    .rule-input:focus { border-color: var(--accent2); }
+    .rule-input.invalid { border-color: var(--accent3) !important; }
+    .rule-input::placeholder { color: var(--border); }
+
+    .rule-del {
+      background: none; border: 1px solid transparent; color: var(--muted);
+      font-size: 16px; cursor: pointer; border-radius: 6px; padding: 4px 8px;
+      transition: color .15s, border-color .15s;
+      align-self: center;
+    }
+    .rule-del:hover { color: var(--accent3); border-color: var(--accent3); }
+
+    .cat-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .cat-note { font-size: 10px; color: var(--border); }
+
+    /* Color picker popup */
+    #color-popup {
+      display: none; position: fixed; z-index: 100;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; width: 220px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    #color-popup.show { display: block; }
+    #color-popup-label { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+    #color-presets { display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin-bottom: 10px; }
+    .color-preset {
+      width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+      border: 2px solid transparent; transition: border-color .15s, transform .1s;
+    }
+    .color-preset:hover { border-color: var(--text); transform: scale(1.15); }
+    #color-hex-input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px;
+      padding: 6px 10px; border-radius: 6px; outline: none; margin-top: 4px;
+    }
+    #color-hex-input:focus { border-color: var(--accent2); }
+
+    /* Add category */
+    #add-cat-btn {
+      width: 100%; background: none; border: 1px dashed var(--border);
+      color: var(--muted); font-family: 'DM Mono', monospace; font-size: 12px;
+      padding: 12px; border-radius: var(--radius); cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    #add-cat-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 22px; font-size: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5); display: none; z-index: 200;
+      animation: slideUp .25s ease;
+    }
+    @keyframes slideUp { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-word">FocusTrack</span>
+    <span class="logo-sub">Rule Editor</span>
+  </div>
+  <div class="header-right">
+    <span id="save-status"></span>
+    <a href="/" class="btn btn-ghost">← Dashboard</a>
+    <button class="btn btn-primary" onclick="saveCategories()">Save Rules</button>
+  </div>
+</header>
+
+<!-- Color picker (shared singleton) -->
+<div id="color-popup">
+  <div id="color-popup-label">Pick Colour</div>
+  <div id="color-presets"></div>
+  <input id="color-hex-input" type="text" placeholder="#c8f060" maxlength="7" oninput="hexInputChanged()" />
+</div>
+
+<main>
+  <!-- Live test bar -->
+  <div id="live-bar">
+    <div class="live-field">
+      <div class="live-label">Current App</div>
+      <div class="live-val" id="live-app">—</div>
+    </div>
+    <div class="live-field">
+      <div class="live-label">Current Window</div>
+      <div class="live-val" id="live-title">—</div>
+    </div>
+    <div id="live-cat-badge">—</div>
+  </div>
+
+  <!-- Category list -->
+  <div id="cat-list"></div>
+  <button id="add-cat-btn" onclick="addCategory()">+ Add Category</button>
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const COLOUR_PRESETS = [
+    '#c8f060','#60c8f0','#f06090','#f0c060','#90f060','#c060f0',
+    '#60f0c8','#f09060','#6090f0','#f060c8','#a0f090','#f0a060',
+    '#6060f0','#60e0a0','#e0a060','#ff6b6b','#4ecdc4','#ffe66d',
+  ];
+
+  let categories = [];
+  let liveInfo   = { app: '', title: '' };
+  let colorTarget = null; // { catIdx, swatchEl }
+
+  // ── Load ───────────────────────────────────────────────────────────────────
+  async function loadCategories() {
+    try {
+      const res = await fetch('/categories', { cache: 'no-store' });
+      categories = await res.json();
+      renderAll();
+    } catch (e) { showToast('Could not load categories', 'err'); }
+  }
+
+  // ── Live window polling ───────────────────────────────────────────────────
+  async function pollLive() {
+    try {
+      const res  = await fetch('/active-window', { cache: 'no-store' });
+      liveInfo   = await res.json();
+      document.getElementById('live-app').textContent   = liveInfo.app   || '—';
+      document.getElementById('live-title').textContent = liveInfo.title || '—';
+      updateLiveBadge();
+    } catch (e) {
+      document.getElementById('live-app').textContent   = 'tracker offline';
+      document.getElementById('live-title').textContent = '—';
+    }
+  }
+
+  function updateLiveBadge() {
+    const cat   = classifyEvent(liveInfo, categories);
+    const badge = document.getElementById('live-cat-badge');
+    badge.textContent  = cat.name;
+    badge.style.color  = cat.color;
+    badge.style.borderColor = cat.color + '50';
+  }
+
+  pollLive();
+  setInterval(pollLive, 3000);
+
+  // ── Classification (same logic as dashboard) ──────────────────────────────
+  function classifyEvent(ev, cats) {
+    for (const cat of cats) {
+      if (!cat.rules || !cat.rules.length) continue;
+      for (const rule of cat.rules) {
+        const appPat   = (rule.app   || '').trim();
+        const titlePat = (rule.title || '').trim();
+        if (!appPat && !titlePat) continue;
+        try {
+          const appMatch   = !appPat   || new RegExp(appPat,   'i').test(ev.app   || '');
+          const titleMatch = !titlePat || new RegExp(titlePat, 'i').test(ev.title || '');
+          if (appMatch && titleMatch) return { name: cat.name, color: cat.color };
+        } catch (e) {}
+      }
+    }
+    const fallback = cats.find(c => !c.rules || !c.rules.length);
+    return fallback ? { name: fallback.name, color: fallback.color } : { name: 'Uncategorised', color: '#6a7080' };
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function renderAll() {
+    const list = document.getElementById('cat-list');
+    list.innerHTML = '';
+    categories.forEach((cat, ci) => renderCatCard(cat, ci, list));
+    updateLiveBadge();
+  }
+
+  function renderCatCard(cat, ci, container) {
+    const card = document.createElement('div');
+    card.className = 'cat-card open';
+    card.dataset.idx = ci;
+
+    const isCatchAll = !cat.rules || cat.rules.length === 0;
+
+    card.innerHTML = `
+      <div class="cat-card-header" onclick="toggleCard(${ci})">
+        <div class="cat-color-swatch" style="background:${cat.color}" onclick="openColorPicker(event, ${ci})" title="Change colour"></div>
+        <input class="cat-name-input" value="${escAttr(cat.name)}" placeholder="Category name"
+               oninput="categories[${ci}].name = this.value; updateLiveBadge()"
+               onclick="event.stopPropagation()" />
+        <span style="font-size:10px;color:var(--muted);margin-right:8px">${isCatchAll ? 'catch-all' : (cat.rules.length + ' rule' + (cat.rules.length!==1?'s':''))}</span>
+        ${ci > 0 ? `<button class="btn btn-ghost btn-small" onclick="event.stopPropagation(); moveUp(${ci})" title="Move up">↑</button>` : '<span style="width:42px"></span>'}
+        ${ci < categories.length-1 ? `<button class="btn btn-ghost btn-small" onclick="event.stopPropagation(); moveDown(${ci})" title="Move down">↓</button>` : '<span style="width:42px"></span>'}
+        <button class="btn btn-danger btn-small" onclick="event.stopPropagation(); deleteCat(${ci})" title="Delete">✕</button>
+        <span class="cat-collapse-icon">▾</span>
+      </div>
+      <div class="cat-card-body">
+        ${isCatchAll
+          ? `<p style="font-size:12px;color:var(--muted);padding:4px 0">This category has no rules — it catches everything not matched above. Keep it last.</p>`
+          : `<div class="rules-list" id="rules-${ci}"></div>
+             <div class="cat-footer">
+               <button class="btn btn-ghost btn-small" onclick="addRule(${ci})">+ Add Rule</button>
+               <span class="cat-note">App AND Title must both match if both specified. Case-insensitive regexp.</span>
+             </div>`
+        }
+      </div>
+    `;
+    container.appendChild(card);
+
+    if (!isCatchAll) {
+      const rulesList = card.querySelector(`#rules-${ci}`);
+      (cat.rules || []).forEach((rule, ri) => renderRule(rule, ci, ri, rulesList));
+    }
+  }
+
+  function renderRule(rule, ci, ri, container) {
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.dataset.ri = ri;
+
+    const appValid   = isValidRegex(rule.app);
+    const titleValid = isValidRegex(rule.title);
+
+    row.innerHTML = `
+      <div class="rule-field">
+        <div class="rule-label">App (regexp)</div>
+        <input class="rule-input ${appValid?'':'invalid'}" value="${escAttr(rule.app||'')}"
+               placeholder="e.g. firefox|chrome"
+               oninput="updateRule(${ci},${ri},'app',this.value,this)" />
+      </div>
+      <div class="rule-field">
+        <div class="rule-label">Window Title (regexp)</div>
+        <input class="rule-input ${titleValid?'':'invalid'}" value="${escAttr(rule.title||'')}"
+               placeholder="e.g. YouTube|Netflix"
+               oninput="updateRule(${ci},${ri},'title',this.value,this)" />
+      </div>
+      <button class="rule-del" onclick="deleteRule(${ci},${ri})" title="Remove rule">✕</button>
+    `;
+    container.appendChild(row);
+  }
+
+  // ── Mutations ───────────────────────────────────────────────────────────────
+  function toggleCard(ci) {
+    const card = document.querySelector(`.cat-card[data-idx="${ci}"]`);
+    if (card) card.classList.toggle('open');
+  }
+
+  function addCategory() {
+    const colours = ['#60c8f0','#c8f060','#f06090','#f0c060','#c060f0'];
+    const newCat  = { name: 'New Category', color: colours[categories.length % colours.length], rules: [{ app: '', title: '' }] };
+    // Insert before catch-all (last category with no rules)
+    const catchIdx = categories.findIndex(c => !c.rules || !c.rules.length);
+    if (catchIdx >= 0) categories.splice(catchIdx, 0, newCat);
+    else categories.push(newCat);
+    renderAll();
+  }
+
+  function deleteCat(ci) {
+    if (categories.length <= 1) { showToast('Cannot delete the only category', 'err'); return; }
+    categories.splice(ci, 1);
+    renderAll();
+  }
+
+  function moveUp(ci) {
+    if (ci === 0) return;
+    [categories[ci-1], categories[ci]] = [categories[ci], categories[ci-1]];
+    renderAll();
+  }
+
+  function moveDown(ci) {
+    if (ci >= categories.length-1) return;
+    [categories[ci], categories[ci+1]] = [categories[ci+1], categories[ci]];
+    renderAll();
+  }
+
+  function addRule(ci) {
+    categories[ci].rules = categories[ci].rules || [];
+    categories[ci].rules.push({ app: '', title: '' });
+    renderAll();
+  }
+
+  function deleteRule(ci, ri) {
+    categories[ci].rules.splice(ri, 1);
+    renderAll();
+  }
+
+  function updateRule(ci, ri, field, value, inputEl) {
+    categories[ci].rules[ri][field] = value;
+    const valid = isValidRegex(value);
+    inputEl.classList.toggle('invalid', !valid && value.trim() !== '');
+    updateLiveBadge();
+  }
+
+  function isValidRegex(s) {
+    if (!s || !s.trim()) return true;
+    try { new RegExp(s, 'i'); return true; } catch (e) { return false; }
+  }
+
+  // ── Color picker ───────────────────────────────────────────────────────────
+  function openColorPicker(e, ci) {
+    e.stopPropagation();
+    colorTarget = { ci, swatchEl: e.currentTarget };
+
+    const popup = document.getElementById('color-popup');
+    const presets = document.getElementById('color-presets');
+    presets.innerHTML = '';
+    COLOUR_PRESETS.forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'color-preset';
+      el.style.background = c;
+      el.onclick = () => applyColor(c);
+      presets.appendChild(el);
+    });
+
+    document.getElementById('color-hex-input').value = categories[ci].color || '';
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    popup.style.top  = (rect.bottom + 8 + window.scrollY) + 'px';
+    popup.style.left = (rect.left + window.scrollX) + 'px';
+    popup.classList.add('show');
+
+    setTimeout(() => document.addEventListener('click', closeColorPicker, { once: true }), 10);
+  }
+
+  function closeColorPicker() {
+    document.getElementById('color-popup').classList.remove('show');
+    colorTarget = null;
+  }
+
+  function applyColor(hex) {
+    if (!colorTarget) return;
+    const ci = colorTarget.ci;
+    categories[ci].color = hex;
+    colorTarget.swatchEl.style.background = hex;
+    document.getElementById('color-hex-input').value = hex;
+    updateLiveBadge();
+    closeColorPicker();
+    renderAll();
+  }
+
+  function hexInputChanged() {
+    const val = document.getElementById('color-hex-input').value;
+    if (/^#[0-9a-fA-F]{6}$/.test(val) && colorTarget) {
+      categories[colorTarget.ci].color = val;
+      colorTarget.swatchEl.style.background = val;
+      updateLiveBadge();
+    }
+  }
+
+  // ── Save ───────────────────────────────────────────────────────────────────
+  async function saveCategories() {
+    const status = document.getElementById('save-status');
+    // Validate all regexps
+    let hasErrors = false;
+    for (const cat of categories) {
+      for (const rule of (cat.rules || [])) {
+        if (!isValidRegex(rule.app) || !isValidRegex(rule.title)) {
+          hasErrors = true; break;
+        }
+      }
+    }
+    if (hasErrors) { showToast('Fix invalid regexp patterns before saving', 'err'); return; }
+
+    try {
+      const res = await fetch('/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(categories),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      status.textContent = '✓ Saved';
+      status.className = 'ok';
+      showToast('Rules saved — dashboard will re-classify on next refresh', 'ok');
+      setTimeout(() => { status.textContent = ''; status.className = ''; }, 3000);
+    } catch (e) {
+      status.textContent = '✕ Save failed';
+      status.className   = 'err';
+      showToast('Save failed: ' + e.message, 'err');
+    }
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, type) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.borderColor = type === 'ok' ? 'var(--accent)' : type === 'err' ? 'var(--accent3)' : 'var(--border)';
+    el.style.color = type === 'ok' ? 'var(--accent)' : type === 'err' ? 'var(--accent3)' : 'var(--text)';
+    el.style.display = '';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+
+  // ── Utils ──────────────────────────────────────────────────────────────────
+  function escAttr(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  loadCategories();
+</script>
+</body>
+</html>
